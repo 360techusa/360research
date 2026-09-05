@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, FileJson, Download, Trash2, Edit2, X, Check, Loader } from 'lucide-react';
+import { Search, FileJson, Download, Trash2, Edit2, X, Check, Loader, ChevronUp, ChevronDown } from 'lucide-react';
 
 interface Lead {
   id: number;
+  searchId: string;
   email: string;
   name: string;
   phone: string;
@@ -26,12 +27,28 @@ interface Campaign {
   created: string;
 }
 
+interface SearchRecord {
+  id: string;
+  query: string;
+  timestamp: string;
+  resultCount: number;
+}
+
+type SortField = 'name' | 'email' | 'phone' | 'city' | 'state' | 'businessType' | 'dateFound';
+type SortOrder = 'asc' | 'desc';
+
 export default function ResearchApp() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [searches, setSearches] = useState<SearchRecord[]>([]);
+  const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
   const [searchMode, setSearchMode] = useState<'natural' | 'structured'>('natural');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Lead | null>(null);
+  
+  const [sortField, setSortField] = useState<SortField>('dateFound');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  
   const [filters, setFilters] = useState({
     businessType: 'all',
     status: 'all',
@@ -49,24 +66,19 @@ export default function ResearchApp() {
     details: ''
   });
 
-  const [stats, setStats] = useState({
-    totalLeads: 0,
-    totalSearches: 0,
-    thisMonth: 0
-  });
-
   useEffect(() => {
     const saved = localStorage.getItem('360Research');
     if (saved) {
       const data = JSON.parse(saved);
       setLeads(data.leads || []);
       setCampaigns(data.campaigns || []);
+      setSearches(data.searches || []);
     }
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('360Research', JSON.stringify({ leads, campaigns }));
-  }, [leads, campaigns]);
+    localStorage.setItem('360Research', JSON.stringify({ leads, campaigns, searches }));
+  }, [leads, campaigns, searches]);
 
   const executeSearch = async () => {
     let query = naturalQuery;
@@ -100,12 +112,25 @@ export default function ResearchApp() {
       const data = await response.json();
 
       if (data.leads && Array.isArray(data.leads)) {
-        setLeads([...leads, ...data.leads]);
-        setStats(s => ({
-          totalLeads: s.totalLeads + data.leads.length,
-          totalSearches: s.totalSearches + 1,
-          thisMonth: s.thisMonth + data.leads.length
+        const searchId = Date.now().toString();
+        
+        // Agregar searchId a cada lead
+        const leadsWithSearchId = data.leads.map((lead: any) => ({
+          ...lead,
+          searchId
         }));
+
+        setLeads([...leads, ...leadsWithSearchId]);
+        
+        // Agregar búsqueda al historial
+        const newSearch: SearchRecord = {
+          id: searchId,
+          query,
+          timestamp: new Date().toLocaleString(),
+          resultCount: data.leads.length
+        };
+        setSearches([newSearch, ...searches]);
+        setSelectedSearchId(searchId);
       }
 
       setNaturalQuery('');
@@ -141,17 +166,58 @@ export default function ResearchApp() {
     }
   };
 
+  const deleteSearch = (searchId: string) => {
+    if (confirm('¿Estás seguro de que quieres borrar esta búsqueda y todos sus leads?')) {
+      setLeads(leads.filter(l => l.searchId !== searchId));
+      setSearches(searches.filter(s => s.id !== searchId));
+      if (selectedSearchId === searchId) {
+        setSelectedSearchId(searches.length > 1 ? searches[0].id : null);
+      }
+    }
+  };
+
   const updateEditField = (field: keyof Lead, value: string) => {
     if (!editData) return;
     setEditData({ ...editData, [field]: value });
   };
 
-  const filteredLeads = leads.filter(l => {
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  let filteredLeads = leads.filter(l => {
+    if (selectedSearchId && l.searchId !== selectedSearchId) return false;
     if (filters.businessType !== 'all' && l.businessType !== filters.businessType) return false;
     if (filters.status !== 'all' && l.status !== filters.status) return false;
     if (filters.campaign !== 'all' && l.campaign !== filters.campaign) return false;
     return true;
   });
+
+  // Ordenar
+  filteredLeads = [...filteredLeads].sort((a, b) => {
+    let aVal: any = a[sortField];
+    let bVal: any = b[sortField];
+    
+    if (typeof aVal === 'string') {
+      aVal = aVal.toLowerCase();
+      bVal = bVal.toLowerCase();
+    }
+    
+    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+    return sortOrder === 'asc' ? comparison : -comparison;
+  });
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (sortField !== field) return null;
+    return sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+  };
+
+  const currentSearch = searches.find(s => s.id === selectedSearchId);
 
   const exportCSV = () => {
     const headers = ['Email', 'Name', 'Phone', 'City', 'State', 'ZIP', 'Website', 'Social', 'Business Type', 'Campaign', 'Status', 'Date Found'];
@@ -175,7 +241,7 @@ export default function ResearchApp() {
     a.click();
   };
 
-  const businessTypes = [...new Set(leads.map(l => l.businessType))];
+  const businessTypes = [...new Set(filteredLeads.map(l => l.businessType))];
   const statuses = ['New', 'Contacted', 'Qualified', 'Negotiating'];
 
   return (
@@ -238,18 +304,65 @@ export default function ResearchApp() {
           )}
         </div>
 
+        {searches.length > 0 && (
+          <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-semibold text-slate-400 mb-3">Búsquedas recientes:</h3>
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => setSelectedSearchId(null)}
+                className={`px-3 py-1 rounded-lg text-sm transition ${
+                  selectedSearchId === null
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-slate-800 border border-slate-700 hover:bg-slate-700'
+                }`}
+              >
+                Ver todos ({leads.length})
+              </button>
+              {searches.map(search => (
+                <div key={search.id} className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelectedSearchId(search.id)}
+                    className={`px-3 py-1 rounded-lg text-sm transition ${
+                      selectedSearchId === search.id
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-slate-800 border border-slate-700 hover:bg-slate-700'
+                    }`}
+                  >
+                    {search.query} ({search.resultCount})
+                  </button>
+                  <button
+                    onClick={() => deleteSearch(search.id)}
+                    className="p-1 hover:bg-red-600 rounded text-slate-400 hover:text-white transition"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {currentSearch && (
+          <div className="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
+            <h2 className="text-lg font-semibold text-blue-100">
+              Mostrando: "{currentSearch.query}" ({currentSearch.resultCount} resultados)
+            </h2>
+            <p className="text-sm text-blue-300">{currentSearch.timestamp}</p>
+          </div>
+        )}
+
         <div className="grid grid-cols-3 gap-4 mb-8">
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
             <div className="text-sm text-slate-400 mb-2">Total leads</div>
-            <div className="text-3xl font-bold">{stats.totalLeads}</div>
+            <div className="text-3xl font-bold">{leads.length}</div>
           </div>
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-            <div className="text-sm text-slate-400 mb-2">Searches</div>
-            <div className="text-3xl font-bold">{stats.totalSearches}</div>
+            <div className="text-sm text-slate-400 mb-2">Búsquedas</div>
+            <div className="text-3xl font-bold">{searches.length}</div>
           </div>
           <div className="bg-slate-800 border border-slate-700 rounded-lg p-4">
-            <div className="text-sm text-slate-400 mb-2">This month</div>
-            <div className="text-3xl font-bold">{stats.thisMonth}</div>
+            <div className="text-sm text-slate-400 mb-2">Mostrando ahora</div>
+            <div className="text-3xl font-bold">{filteredLeads.length}</div>
           </div>
         </div>
 
@@ -279,11 +392,21 @@ export default function ResearchApp() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700 bg-slate-800">
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold">Name</th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold">Email</th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold">Phone</th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold">City, State</th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold">Business Type</th>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('name')}>
+                  <div className="flex items-center gap-1">Name <SortIcon field="name" /></div>
+                </th>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('email')}>
+                  <div className="flex items-center gap-1">Email <SortIcon field="email" /></div>
+                </th>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('phone')}>
+                  <div className="flex items-center gap-1">Phone <SortIcon field="phone" /></div>
+                </th>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('city')}>
+                  <div className="flex items-center gap-1">City, State <SortIcon field="city" /></div>
+                </th>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('businessType')}>
+                  <div className="flex items-center gap-1">Business Type <SortIcon field="businessType" /></div>
+                </th>
                 <th className="text-left px-4 py-3 text-slate-400 font-semibold">Status</th>
                 <th className="text-left px-4 py-3 text-slate-400 font-semibold">Actions</th>
               </tr>
