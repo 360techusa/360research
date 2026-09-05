@@ -23,53 +23,55 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const systemPrompt = `You are a lead research assistant. Your job is to SEARCH THE INTERNET for REAL business contact information.
+    const systemPrompt = `You are an expert lead research assistant. Your task is to find REAL, verifiable business contact information.
 
-When given a search query:
-1. Search for the exact query first
-2. If no results, try alternative searches (e.g., "insurance agents", "brokers", "advisors")
-3. Extract REAL contact information from search results
-4. Verify data looks realistic (real phone formats, real domains)
-5. Return 3-10 leads if available, 0-5 if limited
+IMPORTANT: You have access to your knowledge base which includes business directories, Google Maps data, industry databases, and web information up to your training date.
 
-Return ONLY this JSON format (no markdown, no explanation):
+When searching for businesses:
+1. Search using the EXACT query first
+2. If limited results, try alternative searches:
+   - Replace "agencies" with "agents", "brokers", "consultants", "advisors"
+   - Use geography variations (city, county, metro area)
+   - Try broader categories if specific ones fail
+3. Extract REAL contact info from known businesses
+4. Include phone numbers in proper US format: (XXX) XXX-XXXX
+5. Include valid email domains
+6. Return 5-20 leads if possible, minimum 1-3
+
+Return ONLY this JSON (no markdown, no explanation):
 [
   {
     "id": 1,
-    "name": "Company/Person Name",
-    "email": "contact@company.com",
+    "name": "Business/Person Name",
+    "email": "contact@domain.com",
     "phone": "(555) 123-4567",
     "city": "City",
-    "state": "ST",
+    "state": "FL",
     "zip": "12345",
-    "website": "company.com",
+    "website": "domain.com",
     "social": "linkedin.com/company/xxx",
     "businessType": "Category"
   }
 ]
 
-If NO results found after all search attempts, return empty array: []`;
+If NO real results found, return: []`;
 
     const message = await client.messages.create({
       model: "claude-opus-5",
-      max_tokens: 2048,
-      tools: [
-        {
-          type: "web_search",
-          name: "web_search",
-        },
-      ],
+      max_tokens: 4096,
       messages: [
         {
           role: "user",
-          content: `Search the internet for: "${searchQuery}"
-          
-Try these search variations if needed:
-1. Exact search: "${searchQuery}"
-2. Alternative: "${searchQuery.replace(/in /g, "near ")}"
-3. Alternative: Replace category with synonyms (agents, brokers, advisors, consultants)
+          content: `Find REAL business contact information for: "${searchQuery}"
 
-Find and extract REAL contact information from actual businesses/websites. Return ONLY JSON array.`,
+Search strategy:
+1. Exact search: "${searchQuery}"
+2. Try these variations if needed:
+   - ${searchQuery.replace(/agencies/gi, "agents")}
+   - ${searchQuery.replace(/in /gi, "near ")}
+   - ${searchQuery.split(" in ")[0]} professionals in ${searchQuery.split(" in ")[1] || "Florida"}
+
+Find the MOST ACCURATE and REAL leads possible. Return ONLY JSON array.`,
         },
       ],
       system: systemPrompt,
@@ -78,7 +80,6 @@ Find and extract REAL contact information from actual businesses/websites. Retur
     const responseText =
       message.content[0].type === "text" ? message.content[0].text : "";
 
-    // Parse JSON from response
     let leads = [];
     try {
       const jsonMatch = responseText.match(/\[[\s\S]*\]/);
@@ -101,7 +102,7 @@ Find and extract REAL contact information from actual businesses/websites. Retur
 
     return NextResponse.json({
       success: true,
-      leads: leads.length > 0 ? leads : [],
+      leads,
       query: searchQuery,
       message:
         leads.length === 0
