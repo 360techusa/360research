@@ -44,7 +44,7 @@ Return EXACTLY this JSON format with 3-5 leads (no markdown, just JSON):
 Be specific and realistic. Extract real-looking data based on the search query.`;
 
     const message = await client.messages.create({
-      model: "claude-opus-4",
+      model: "claude-opus-5",
       max_tokens: 1024,
       messages: [
         {
