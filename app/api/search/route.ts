@@ -67,7 +67,7 @@ Be specific and realistic. Extract real-looking data based on the search query.`
       leads = JSON.parse(jsonString);
 
       // Add IDs and businessType if missing
-      leads = leads.map((lead, idx) => ({
+leads = leads.map((lead: any, idx: number) => ({
         id: Date.now() + idx,
         businessType: structured?.businessType || "General",
         campaign: structured?.campaignName || "Uncategorized",
