@@ -114,22 +114,20 @@ export default function ResearchApp() {
       if (data.leads && Array.isArray(data.leads)) {
         const searchId = Date.now().toString();
         
-        // Agregar searchId a cada lead
         const leadsWithSearchId = data.leads.map((lead: any) => ({
           ...lead,
           searchId
         }));
 
-        setLeads([...leads, ...leadsWithSearchId]);
+        setLeads(prev => [...leadsWithSearchId, ...prev]);
         
-        // Agregar búsqueda al historial
         const newSearch: SearchRecord = {
           id: searchId,
           query,
           timestamp: new Date().toLocaleString(),
           resultCount: data.leads.length
         };
-        setSearches([newSearch, ...searches]);
+        setSearches(prev => [newSearch, ...prev]);
         setSelectedSearchId(searchId);
       }
 
@@ -150,7 +148,7 @@ export default function ResearchApp() {
 
   const saveEdit = () => {
     if (!editData) return;
-    setLeads(leads.map(l => l.id === editingId ? editData : l));
+    setLeads(leads.map(l => l.id === editingId ? { ...editData } : l));
     setEditingId(null);
     setEditData(null);
   };
@@ -171,7 +169,7 @@ export default function ResearchApp() {
       setLeads(leads.filter(l => l.searchId !== searchId));
       setSearches(searches.filter(s => s.id !== searchId));
       if (selectedSearchId === searchId) {
-        setSelectedSearchId(searches.length > 1 ? searches[0].id : null);
+        setSelectedSearchId(null);
       }
     }
   };
@@ -198,23 +196,24 @@ export default function ResearchApp() {
     return true;
   });
 
-  // Ordenar
+  // Ordenar CORRECTAMENTE
   filteredLeads = [...filteredLeads].sort((a, b) => {
     let aVal: any = a[sortField];
     let bVal: any = b[sortField];
     
     if (typeof aVal === 'string') {
       aVal = aVal.toLowerCase();
-      bVal = bVal.toLowerCase();
+      bVal = (bVal as string).toLowerCase();
     }
     
-    const comparison = aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
-    return sortOrder === 'asc' ? comparison : -comparison;
+    if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+    return 0;
   });
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return null;
-    return sortOrder === 'asc' ? <ChevronUp size={14} /> : <ChevronDown size={14} />;
+    return sortOrder === 'asc' ? <ChevronUp size={14} className="inline" /> : <ChevronDown size={14} className="inline" />;
   };
 
   const currentSearch = searches.find(s => s.id === selectedSearchId);
@@ -306,35 +305,37 @@ export default function ResearchApp() {
 
         {searches.length > 0 && (
           <div className="bg-slate-900 border border-slate-700 rounded-lg p-4 mb-6">
-            <h3 className="text-sm font-semibold text-slate-400 mb-3">Búsquedas recientes:</h3>
-            <div className="flex flex-wrap gap-2">
+            <h3 className="text-sm font-semibold text-slate-400 mb-3">Historial de búsquedas ({searches.length}):</h3>
+            <div className="space-y-2 max-h-48 overflow-y-auto">
               <button
                 onClick={() => setSelectedSearchId(null)}
-                className={`px-3 py-1 rounded-lg text-sm transition ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-sm transition ${
                   selectedSearchId === null
                     ? 'bg-blue-600 text-white'
                     : 'bg-slate-800 border border-slate-700 hover:bg-slate-700'
                 }`}
               >
-                Ver todos ({leads.length})
+                📊 Ver todos ({leads.length} leads)
               </button>
               {searches.map(search => (
-                <div key={search.id} className="flex items-center gap-1">
+                <div key={search.id} className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-lg p-2">
                   <button
                     onClick={() => setSelectedSearchId(search.id)}
-                    className={`px-3 py-1 rounded-lg text-sm transition ${
+                    className={`flex-1 text-left px-2 py-1 rounded text-sm transition ${
                       selectedSearchId === search.id
                         ? 'bg-blue-600 text-white'
-                        : 'bg-slate-800 border border-slate-700 hover:bg-slate-700'
+                        : 'hover:bg-slate-700'
                     }`}
                   >
-                    {search.query} ({search.resultCount})
+                    <div className="font-semibold">{search.query}</div>
+                    <div className="text-xs text-slate-400">{search.timestamp} • {search.resultCount} leads</div>
                   </button>
                   <button
                     onClick={() => deleteSearch(search.id)}
-                    className="p-1 hover:bg-red-600 rounded text-slate-400 hover:text-white transition"
+                    className="p-1.5 hover:bg-red-600 rounded text-slate-400 hover:text-white transition flex-shrink-0"
+                    title="Borrar búsqueda"
                   >
-                    <X size={14} />
+                    <Trash2 size={16} />
                   </button>
                 </div>
               ))}
@@ -345,9 +346,9 @@ export default function ResearchApp() {
         {currentSearch && (
           <div className="bg-blue-900 border border-blue-700 rounded-lg p-4 mb-6">
             <h2 className="text-lg font-semibold text-blue-100">
-              Mostrando: "{currentSearch.query}" ({currentSearch.resultCount} resultados)
+              📌 Mostrando: "{currentSearch.query}"
             </h2>
-            <p className="text-sm text-blue-300">{currentSearch.timestamp}</p>
+            <p className="text-sm text-blue-300">{currentSearch.timestamp} • {currentSearch.resultCount} resultados encontrados</p>
           </div>
         )}
 
@@ -392,20 +393,20 @@ export default function ResearchApp() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700 bg-slate-800">
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('name')}>
-                  <div className="flex items-center gap-1">Name <SortIcon field="name" /></div>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('name')}>
+                  Name <SortIcon field="name" />
                 </th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('email')}>
-                  <div className="flex items-center gap-1">Email <SortIcon field="email" /></div>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('email')}>
+                  Email <SortIcon field="email" />
                 </th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('phone')}>
-                  <div className="flex items-center gap-1">Phone <SortIcon field="phone" /></div>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('phone')}>
+                  Phone <SortIcon field="phone" />
                 </th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('city')}>
-                  <div className="flex items-center gap-1">City, State <SortIcon field="city" /></div>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('city')}>
+                  City, State <SortIcon field="city" />
                 </th>
-                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700" onClick={() => handleSort('businessType')}>
-                  <div className="flex items-center gap-1">Business Type <SortIcon field="businessType" /></div>
+                <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('businessType')}>
+                  Business Type <SortIcon field="businessType" />
                 </th>
                 <th className="text-left px-4 py-3 text-slate-400 font-semibold">Status</th>
                 <th className="text-left px-4 py-3 text-slate-400 font-semibold">Actions</th>
@@ -424,11 +425,24 @@ export default function ResearchApp() {
                         <td className="px-4 py-3"><input type="text" value={editData.name} onChange={(e) => updateEditField('name', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
                         <td className="px-4 py-3"><input type="text" value={editData.email} onChange={(e) => updateEditField('email', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
                         <td className="px-4 py-3"><input type="text" value={editData.phone} onChange={(e) => updateEditField('phone', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="text" value={`${editData.city}, ${editData.state}`} onChange={(e) => { const [c, s] = e.target.value.split(', '); updateEditField('city', c); updateEditField('state', s || ''); }} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3">
+                          <input 
+                            type="text" 
+                            value={`${editData.city}, ${editData.state}`} 
+                            onChange={(e) => { 
+                              const parts = e.target.value.split(', ');
+                              updateEditField('city', parts[0] || '');
+                              updateEditField('state', parts[1] || ''); 
+                            }} 
+                            className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" 
+                          />
+                        </td>
                         <td className="px-4 py-3"><input type="text" value={editData.businessType} onChange={(e) => updateEditField('businessType', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><select value={editData.status} onChange={(e) => updateEditField('status', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm">
-                          {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-                        </select></td>
+                        <td className="px-4 py-3">
+                          <select value={editData.status} onChange={(e) => updateEditField('status', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm">
+                            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        </td>
                         <td className="px-4 py-3 flex gap-1">
                           <button onClick={saveEdit} className="p-1 bg-green-600 hover:bg-green-700 rounded"><Check size={14} /></button>
                           <button onClick={cancelEdit} className="p-1 bg-red-600 hover:bg-red-700 rounded"><X size={14} /></button>
