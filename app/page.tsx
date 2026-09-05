@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, Search, FileJson, Download, Plus, Trash2, Edit2, X, Check } from 'lucide-react';
+import { ChevronDown, Search, FileJson, Download, Plus, Trash2, Edit2, X, Check, Loader } from 'lucide-react';
 
 interface Lead {
   id: number;
@@ -39,6 +39,7 @@ export default function ResearchApp() {
   });
 
   const [naturalQuery, setNaturalQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   
   const [structured, setStructured] = useState({
     campaignName: '',
@@ -67,7 +68,7 @@ export default function ResearchApp() {
     localStorage.setItem('360Research', JSON.stringify({ leads, campaigns }));
   }, [leads, campaigns]);
 
-  const executeSearch = () => {
+  const executeSearch = async () => {
     let query = naturalQuery;
     if (searchMode === 'structured' && structured.campaignName) {
       query = `${structured.businessType} in ${structured.geography}${structured.companySize ? ' (' + structured.companySize + ')' : ''}`;
@@ -75,25 +76,48 @@ export default function ResearchApp() {
 
     if (!query.trim()) return;
 
-    if (structured.campaignName && !campaigns.find(c => c.name === structured.campaignName)) {
-      setCampaigns([...campaigns, { id: Date.now(), name: structured.campaignName, created: new Date().toLocaleDateString() }]);
+    setIsSearching(true);
+
+    try {
+      // Add campaign if new
+      if (searchMode === 'structured' && structured.campaignName && !campaigns.find(c => c.name === structured.campaignName)) {
+        setCampaigns([...campaigns, { id: Date.now(), name: structured.campaignName, created: new Date().toLocaleDateString() }]);
+      }
+
+      // Call our API
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: naturalQuery,
+          searchMode,
+          structured,
+        }),
+      });
+
+      if (!response.ok) throw new Error('Search failed');
+
+      const data = await response.json();
+
+      if (data.leads && Array.isArray(data.leads)) {
+        setLeads([...leads, ...data.leads]);
+        setStats(s => ({
+          totalLeads: s.totalLeads + data.leads.length,
+          totalSearches: s.totalSearches + 1,
+          thisMonth: s.thisMonth + data.leads.length
+        }));
+      }
+
+      setNaturalQuery('');
+      setStructured({ campaignName: '', businessType: '', geography: '', companySize: '', details: '' });
+    } catch (error) {
+      console.error('Search error:', error);
+      alert('Search failed. Please try again.');
+    } finally {
+      setIsSearching(false);
     }
-
-    const mockLeads: Lead[] = [
-      { id: Date.now(), email: 'john@example.com', name: 'John Smith', phone: '(555) 123-4567', city: 'New York', state: 'NY', zip: '10001', website: 'example.com', social: '@johnsmith', businessType: structured.businessType || 'General', campaign: structured.campaignName || 'Uncategorized', status: 'New', dateFound: new Date().toLocaleDateString(), notes: '' },
-      { id: Date.now() + 1, email: 'sarah@company.co', name: 'Sarah Johnson', phone: '(555) 234-5678', city: 'Los Angeles', state: 'CA', zip: '90001', website: 'company.co', social: 'linkedin.com/in/sarah', businessType: structured.businessType || 'General', campaign: structured.campaignName || 'Uncategorized', status: 'New', dateFound: new Date().toLocaleDateString(), notes: '' },
-      { id: Date.now() + 2, email: 'michael@biz.org', name: 'Michael Brown', phone: '(555) 345-6789', city: 'Chicago', state: 'IL', zip: '60601', website: 'biz.org', social: '@michaelbrown', businessType: structured.businessType || 'General', campaign: structured.campaignName || 'Uncategorized', status: 'New', dateFound: new Date().toLocaleDateString(), notes: '' },
-    ];
-
-    setLeads([...leads, ...mockLeads]);
-    setNaturalQuery('');
-    setStructured({ campaignName: '', businessType: '', geography: '', companySize: '', details: '' });
-    
-    setStats(s => ({
-      totalLeads: s.totalLeads + mockLeads.length,
-      totalSearches: s.totalSearches + 1,
-      thisMonth: s.thisMonth + mockLeads.length
-    }));
   };
 
   const startEdit = (lead: Lead) => {
@@ -167,10 +191,11 @@ export default function ResearchApp() {
                   value={naturalQuery}
                   onChange={(e) => setNaturalQuery(e.target.value)}
                   onKeyPress={(e) => e.key === 'Enter' && executeSearch()}
-                  className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500"
+                  disabled={isSearching}
+                  className="flex-1 px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 disabled:opacity-50"
                 />
-                <button onClick={executeSearch} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center gap-2">
-                  <Search size={18} /> Search
+                <button onClick={executeSearch} disabled={isSearching} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50">
+                  {isSearching ? <Loader size={18} className="animate-spin" /> : <Search size={18} />} {isSearching ? 'Searching...' : 'Search'}
                 </button>
               </div>
             </div>
@@ -179,23 +204,23 @@ export default function ResearchApp() {
               <div className="grid grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">Campaign name</label>
-                  <input type="text" placeholder="e.g., CA Dental Q4 2026" value={structured.campaignName} onChange={(e) => setStructured({...structured, campaignName: e.target.value})} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm" />
+                  <input type="text" placeholder="e.g., CA Dental Q4 2026" value={structured.campaignName} onChange={(e) => setStructured({...structured, campaignName: e.target.value})} disabled={isSearching} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">Business type</label>
-                  <input type="text" placeholder="e.g., Dental Clinics" value={structured.businessType} onChange={(e) => setStructured({...structured, businessType: e.target.value})} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm" />
+                  <input type="text" placeholder="e.g., Dental Clinics" value={structured.businessType} onChange={(e) => setStructured({...structured, businessType: e.target.value})} disabled={isSearching} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">Geography</label>
-                  <input type="text" placeholder="e.g., California, USA" value={structured.geography} onChange={(e) => setStructured({...structured, geography: e.target.value})} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm" />
+                  <input type="text" placeholder="e.g., California, USA" value={structured.geography} onChange={(e) => setStructured({...structured, geography: e.target.value})} disabled={isSearching} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50" />
                 </div>
                 <div>
                   <label className="block text-xs text-slate-400 mb-2">Company size</label>
-                  <input type="text" placeholder="e.g., 1-5, 5-50, 50+" value={structured.companySize} onChange={(e) => setStructured({...structured, companySize: e.target.value})} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm" />
+                  <input type="text" placeholder="e.g., 1-5, 5-50, 50+" value={structured.companySize} onChange={(e) => setStructured({...structured, companySize: e.target.value})} disabled={isSearching} className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-slate-100 text-sm disabled:opacity-50" />
                 </div>
               </div>
-              <button onClick={executeSearch} className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center justify-center gap-2">
-                <Search size={18} /> Execute search
+              <button onClick={executeSearch} disabled={isSearching} className="w-full px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg font-semibold flex items-center justify-center gap-2 disabled:opacity-50">
+                {isSearching ? <Loader size={18} className="animate-spin" /> : <Search size={18} />} {isSearching ? 'Searching...' : 'Execute search'}
               </button>
             </div>
           )}
