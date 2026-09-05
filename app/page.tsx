@@ -31,7 +31,7 @@ export default function ResearchApp() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [searchMode, setSearchMode] = useState<'natural' | 'structured'>('natural');
   const [editingId, setEditingId] = useState<number | null>(null);
-  const [editData, setEditData] = useState<Lead | {}>({});
+  const [editData, setEditData] = useState<Lead | null>(null);
   const [filters, setFilters] = useState({
     businessType: 'all',
     status: 'all',
@@ -124,12 +124,26 @@ export default function ResearchApp() {
   };
 
   const saveEdit = () => {
-    setLeads(leads.map((l: any) => l.id === editingId ? editData as Lead : l));
+    if (!editData) return;
+    setLeads(leads.map(l => l.id === editingId ? editData : l));
     setEditingId(null);
+    setEditData(null);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditData(null);
   };
 
   const deleteLead = (id: number) => {
-    setLeads(leads.filter(l => l.id !== id));
+    if (confirm('¿Estás seguro de que quieres borrar este lead?')) {
+      setLeads(leads.filter(l => l.id !== id));
+    }
+  };
+
+  const updateEditField = (field: keyof Lead, value: string) => {
+    if (!editData) return;
+    setEditData({ ...editData, [field]: value });
   };
 
   const filteredLeads = leads.filter(l => {
@@ -282,19 +296,19 @@ export default function ResearchApp() {
               ) : (
                 filteredLeads.map(lead => (
                   <tr key={lead.id} className="border-b border-slate-700 hover:bg-slate-800">
-                    {editingId === lead.id ? (
+                    {editingId === lead.id && editData ? (
                       <>
-                        <td className="px-4 py-3"><input type="text" value={(editData as Lead).name} onChange={(e) => setEditData({...editData as Lead, name: e.target.value})} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="text" value={(editData as Lead).email} onChange={(e) => setEditData({...editData as Lead, email: e.target.value})} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="text" value={(editData as Lead).phone} onChange={(e) => setEditData({...editData as Lead, phone: e.target.value})} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="text" value={`${(editData as Lead).city}, ${(editData as Lead).state}`} onChange={(e) => { const [c, s] = e.target.value.split(', '); setEditData({...editData as Lead, city: c, state: s}); }} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><input type="text" value={(editData as Lead).businessType} onChange={(e) => setEditData({...editData as Lead, businessType: e.target.value})} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
-                        <td className="px-4 py-3"><select value={(editData as Lead).status} onChange={(e) => setEditData({...editData as Lead, status: e.target.value})} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm">
+                        <td className="px-4 py-3"><input type="text" value={editData.name} onChange={(e) => updateEditField('name', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3"><input type="text" value={editData.email} onChange={(e) => updateEditField('email', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3"><input type="text" value={editData.phone} onChange={(e) => updateEditField('phone', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3"><input type="text" value={`${editData.city}, ${editData.state}`} onChange={(e) => { const [c, s] = e.target.value.split(', '); updateEditField('city', c); updateEditField('state', s || ''); }} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3"><input type="text" value={editData.businessType} onChange={(e) => updateEditField('businessType', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
+                        <td className="px-4 py-3"><select value={editData.status} onChange={(e) => updateEditField('status', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm">
                           {statuses.map(s => <option key={s} value={s}>{s}</option>)}
                         </select></td>
                         <td className="px-4 py-3 flex gap-1">
                           <button onClick={saveEdit} className="p-1 bg-green-600 hover:bg-green-700 rounded"><Check size={14} /></button>
-                          <button onClick={() => setEditingId(null)} className="p-1 bg-red-600 hover:bg-red-700 rounded"><X size={14} /></button>
+                          <button onClick={cancelEdit} className="p-1 bg-red-600 hover:bg-red-700 rounded"><X size={14} /></button>
                         </td>
                       </>
                     ) : (
