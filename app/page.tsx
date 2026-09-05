@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Search, FileJson, Download, Trash2, Edit2, X, Check, Loader, ChevronUp, ChevronDown } from 'lucide-react';
+import { Search, FileJson, Download, Trash2, Edit2, X, Check, Loader, ChevronUp, ChevronDown, Plus } from 'lucide-react';
 
 interface Lead {
   id: number;
@@ -42,9 +42,11 @@ export default function ResearchApp() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [searches, setSearches] = useState<SearchRecord[]>([]);
   const [selectedSearchId, setSelectedSearchId] = useState<string | null>(null);
+  const [selectedLeads, setSelectedLeads] = useState<number[]>([]);
   const [searchMode, setSearchMode] = useState<'natural' | 'structured'>('natural');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editData, setEditData] = useState<Lead | null>(null);
+  const [isAddingToLive360, setIsAddingToLive360] = useState(false);
   
   const [sortField, setSortField] = useState<SortField>('dateFound');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
@@ -129,6 +131,7 @@ export default function ResearchApp() {
         };
         setSearches(prev => [newSearch, ...prev]);
         setSelectedSearchId(searchId);
+        setSelectedLeads([]);
       }
 
       setNaturalQuery('');
@@ -138,6 +141,54 @@ export default function ResearchApp() {
       alert('Search failed. Please try again.');
     } finally {
       setIsSearching(false);
+    }
+  };
+
+  const toggleSelectLead = (leadId: number) => {
+    setSelectedLeads(prev =>
+      prev.includes(leadId) ? prev.filter(id => id !== leadId) : [...prev, leadId]
+    );
+  };
+
+  const selectAllVisible = () => {
+    const allIds = filteredLeads.map(l => l.id);
+    setSelectedLeads(selectedLeads.length === allIds.length ? [] : allIds);
+  };
+
+  const addToLive360 = async () => {
+    const leadsToAdd = leads.filter(l => selectedLeads.includes(l.id));
+    
+    if (leadsToAdd.length === 0) {
+      alert('Select at least one lead');
+      return;
+    }
+
+    setIsAddingToLive360(true);
+
+    try {
+      const response = await fetch('/api/live360/add-contacts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          leads: leadsToAdd,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        alert(`✅ ${data.results.filter((r: any) => r.success).length} leads added to Live360`);
+        setSelectedLeads([]);
+      } else {
+        alert(`❌ Error: ${data.error}`);
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      alert('Failed to add to Live360');
+    } finally {
+      setIsAddingToLive360(false);
     }
   };
 
@@ -161,6 +212,7 @@ export default function ResearchApp() {
   const deleteLead = (id: number) => {
     if (confirm('¿Estás seguro de que quieres borrar este lead?')) {
       setLeads(leads.filter(l => l.id !== id));
+      setSelectedLeads(selectedLeads.filter(lid => lid !== id));
     }
   };
 
@@ -196,7 +248,6 @@ export default function ResearchApp() {
     return true;
   });
 
-  // Ordenar CORRECTAMENTE
   filteredLeads = [...filteredLeads].sort((a, b) => {
     let aVal: any = a[sortField];
     let bVal: any = b[sortField];
@@ -389,10 +440,34 @@ export default function ResearchApp() {
           </div>
         </div>
 
+        {selectedLeads.length > 0 && (
+          <div className="bg-green-900 border border-green-700 rounded-lg p-4 mb-6 flex items-center justify-between">
+            <div>
+              <p className="text-green-100 font-semibold">{selectedLeads.length} leads seleccionados</p>
+            </div>
+            <button
+              onClick={addToLive360}
+              disabled={isAddingToLive360}
+              className="px-6 py-2 bg-green-600 hover:bg-green-700 rounded-lg font-semibold flex items-center gap-2 disabled:opacity-50"
+            >
+              {isAddingToLive360 ? <Loader size={18} className="animate-spin" /> : <Plus size={18} />}
+              {isAddingToLive360 ? 'Adding...' : 'Add to Live360'}
+            </button>
+          </div>
+        )}
+
         <div className="bg-slate-900 border border-slate-700 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-700 bg-slate-800">
+                <th className="text-left px-4 py-3 w-8">
+                  <input
+                    type="checkbox"
+                    checked={selectedLeads.length === filteredLeads.length && filteredLeads.length > 0}
+                    onChange={selectAllVisible}
+                    className="w-4 h-4"
+                  />
+                </th>
                 <th className="text-left px-4 py-3 text-slate-400 font-semibold cursor-pointer hover:bg-slate-700 transition" onClick={() => handleSort('name')}>
                   Name <SortIcon field="name" />
                 </th>
@@ -415,13 +490,14 @@ export default function ResearchApp() {
             <tbody>
               {filteredLeads.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="text-center py-8 text-slate-500">No leads found. Start a search above.</td>
+                  <td colSpan={8} className="text-center py-8 text-slate-500">No leads found. Start a search above.</td>
                 </tr>
               ) : (
                 filteredLeads.map(lead => (
                   <tr key={lead.id} className="border-b border-slate-700 hover:bg-slate-800">
                     {editingId === lead.id && editData ? (
                       <>
+                        <td className="px-4 py-3"></td>
                         <td className="px-4 py-3"><input type="text" value={editData.name} onChange={(e) => updateEditField('name', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
                         <td className="px-4 py-3"><input type="text" value={editData.email} onChange={(e) => updateEditField('email', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
                         <td className="px-4 py-3"><input type="text" value={editData.phone} onChange={(e) => updateEditField('phone', e.target.value)} className="w-full px-2 py-1 bg-slate-700 border border-slate-600 rounded text-slate-100 text-sm" /></td>
@@ -450,6 +526,14 @@ export default function ResearchApp() {
                       </>
                     ) : (
                       <>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedLeads.includes(lead.id)}
+                            onChange={() => toggleSelectLead(lead.id)}
+                            className="w-4 h-4"
+                          />
+                        </td>
                         <td className="px-4 py-3">{lead.name}</td>
                         <td className="px-4 py-3 text-blue-400">{lead.email}</td>
                         <td className="px-4 py-3">{lead.phone}</td>
